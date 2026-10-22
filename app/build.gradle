@@ -16,6 +16,15 @@ android {
     }
 
     signingConfigs {
+        // Fixed key so every CI build has the same signature and can be installed
+        // over the previous one without losing on-device learning data.
+        // Personal sideload use only; not a secret.
+        debug {
+            storeFile file("fold-debug.keystore")
+            storePassword "android"
+            keyAlias "foldime"
+            keyPassword "android"
+        }
         release {
             if (localProperties['KEYSTORE_FILE']) {
                 storeFile file(localProperties['KEYSTORE_FILE'])
