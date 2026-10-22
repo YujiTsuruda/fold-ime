@@ -1,3 +1,44 @@
+# fold-ime
+
+Galaxy Z Fold 8 Ultra で使うための、個人用の日本語キーボード。
+[Sumire](https://github.com/KazumaProject/JapaneseKeyboard)（MITライセンス）のフォークです。
+
+## 目的
+
+- 日本語入力と英字入力で、同じ QWERTY 配列のまま使えること
+- 画面を開いたときに、キーボードを左右に分割して使えること
+- 学習した内容（変換履歴・ユーザー辞書）が、端末の外に出ないこと
+
+## 元の Sumire からの変更点
+
+- クラウドバックアップと端末移行から、アプリのデータをすべて除外（`allowBackup=false` と除外ルール）
+- 毎回同じ署名キーでビルドするようにして、新しいビルドを上書きインストールしても学習データが消えないようにした
+- GitHub Actions に `Build APK` を追加。ビルドしたAPKに `INTERNET` 権限が含まれていたら失敗する
+
+## 予定
+
+- 折りたたみ状態の検知（開いたときだけ自動でスプリット表示にする）
+- 日本語と英字で配列が変わらないことの確認と調整
+
+## APK の入手とインストール
+
+1. このリポジトリの **Actions** タブで **Build APK** を開き、成功した実行を選ぶ
+2. 一番下の **Artifacts** から `fold-ime-apk` をダウンロードして展開する
+3. 中の `.apk` を端末に入れる（提供元不明のアプリのインストールを許可する必要があります）
+4. 端末の設定から、このキーボードを有効にして選ぶ
+
+ビルドされるのは `lite` 版（Zenz・Gemma なし）のデバッグ APK です。
+署名キー（`app/fold-debug.keystore`）は個人利用のためにリポジトリに含めています。秘密ではありません。
+
+## ライセンスと謝辞
+
+元のプロジェクトは [KazumaProject/JapaneseKeyboard](https://github.com/KazumaProject/JapaneseKeyboard)（MIT License, Copyright (c) 2024 Kazuma Naka）です。
+このフォークも同じライセンスで、`LICENSE` と `THIRD-PARTY-NOTICES.md` をそのまま残しています。
+
+---
+
+# 以下は元の README（Sumire）
+
 # Sumire (スミレ) — The Privacy-First Japanese Keyboard
 
 <p align="center">
