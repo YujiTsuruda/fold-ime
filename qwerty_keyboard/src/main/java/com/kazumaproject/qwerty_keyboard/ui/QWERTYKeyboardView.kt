@@ -815,6 +815,7 @@ class QWERTYKeyboardView @JvmOverloads constructor(
     private val splitOuterFraction = 0.01f
     private val splitGridFraction = 0.04f
     private var isSplitLayout = false
+    private var kutoutenRequested = true
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
@@ -884,9 +885,31 @@ class QWERTYKeyboardView @JvmOverloads constructor(
         val colFraction = (0.5f - halfGap - splitGridFraction) / 5f
 
         // Which keys live in the bottom-letter row (z row) and which in the bottom row.
-        setKeyRow(binding.keyShift, inZRow = !split)
-        setKeyRow(binding.keyTouten, inZRow = split)
-        setKeyRow(binding.keyKuten, inZRow = split)
+        val numberGuide = binding.guidelineNumberRow.id
+        val qGuide = binding.guidelineQRow.id
+        val aGuide = binding.guidelineARow.id
+        val zGuide = binding.guidelineZRow.id
+        val bottom = ConstraintLayout.LayoutParams.PARENT_ID
+        // shift: bottom row while split, z row otherwise
+        placeInRow(binding.keyShift, if (split) zGuide else aGuide, if (split) bottom else zGuide)
+        // punctuation: under k / l (z row) while split, bottom row otherwise
+        listOf(binding.keyTouten, binding.keyKuten).forEach {
+            placeInRow(it, if (split) aGuide else zGuide, if (split) zGuide else bottom)
+        }
+        // IME keys: center of the letter rows while split, bottom row otherwise
+        listOf(
+            binding.switchRomajiEnglish, binding.switchNumberLayout, binding.key123,
+            binding.keyEmoji, binding.keySwitchDefault
+        ).forEach {
+            placeInRow(it, if (split) numberGuide else zGuide, if (split) qGuide else bottom)
+        }
+        // cursor keys: center of the a row while split, bottom row otherwise
+        listOf(binding.cursorLeft, binding.cursorRight).forEach {
+            placeInRow(it, if (split) qGuide else zGuide, if (split) aGuide else bottom)
+        }
+        // Punctuation is always shown while split (it has its own place under k / l).
+        binding.keyTouten.isVisible = split || kutoutenRequested
+        binding.keyKuten.isVisible = split || kutoutenRequested
 
         if (split) {
             setSideKeyWidth(binding.keyShift, true, 1f)
@@ -923,19 +946,12 @@ class QWERTYKeyboardView @JvmOverloads constructor(
 
         binding.keySpaceRight.isVisible = split
         val bottomRow: List<Pair<View, Float>> = if (split) {
-            // [shift][←][ space ]  (IME keys in the center gap)  [ space ][→][return]
-            val g = (splitGapFraction / colFraction) / 3f
+            // [shift][ space ][ space ][return]; the two spaces meet in the center gap.
+            val gapUnits = splitGapFraction / colFraction
             listOf(
-                binding.keyShift to 1f,
-                binding.cursorLeft to 1f,
-                binding.keySpace to 3f,
-                binding.switchRomajiEnglish to g,
-                binding.switchNumberLayout to g * 0.5f,
-                binding.key123 to g,
-                binding.keyEmoji to g * 0.5f,
-                binding.keySwitchDefault to g,
-                binding.keySpaceRight to 2.5f,
-                binding.cursorRight to 1f,
+                binding.keyShift to 1.5f,
+                binding.keySpace to (3.5f + gapUnits / 2f),
+                binding.keySpaceRight to (3.5f + gapUnits / 2f),
                 binding.keyReturn to 1.5f
             )
         } else {
@@ -954,24 +970,43 @@ class QWERTYKeyboardView @JvmOverloads constructor(
             )
         }
         relinkHorizontalChain(bottomRow, gridStart, gridEnd)
+        if (split) {
+            val g = splitGapFraction / colFraction / 3f
+            relinkHorizontalChain(
+                listOf(
+                    binding.switchRomajiEnglish to g,
+                    binding.switchNumberLayout to g * 0.5f,
+                    binding.key123 to g,
+                    binding.keyEmoji to g * 0.5f,
+                    binding.keySwitchDefault to g
+                ),
+                binding.guidelineSplitLeft.id, binding.guidelineSplitRight.id
+            )
+            relinkHorizontalChain(
+                listOf(binding.cursorLeft to 1f, binding.cursorRight to 1f),
+                binding.guidelineSplitLeft.id, binding.guidelineSplitRight.id
+            )
+        }
 
         applyLayoutForMode(qwertyMode.value)
         requestLayout()
     }
 
-    /** Moves [view] between the bottom letter row (z row) and the bottom row. */
-    private fun setKeyRow(view: View, inZRow: Boolean) {
+    /**
+     * Places [view] vertically between the guideline [topId] and [bottomId]
+     * (PARENT_ID = the bottom of the keyboard).
+     */
+    private fun placeInRow(view: View, topId: Int, bottomId: Int) {
         val lp = view.layoutParams as ConstraintLayout.LayoutParams
         val unset = ConstraintLayout.LayoutParams.UNSET
         lp.topToTop = unset
-        if (inZRow) {
-            lp.topToBottom = binding.guidelineARow.id
-            lp.bottomToTop = binding.guidelineZRow.id
-            lp.bottomToBottom = unset
-        } else {
-            lp.topToBottom = binding.guidelineZRow.id
+        lp.topToBottom = topId
+        if (bottomId == ConstraintLayout.LayoutParams.PARENT_ID) {
             lp.bottomToTop = unset
-            lp.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
+            lp.bottomToBottom = bottomId
+        } else {
+            lp.bottomToTop = bottomId
+            lp.bottomToBottom = unset
         }
         view.layoutParams = lp
     }
@@ -3426,8 +3461,9 @@ class QWERTYKeyboardView @JvmOverloads constructor(
         binding.cursorRight.isVisible = showCursors
         binding.keySwitchDefault.isVisible = showSwitchKey
         binding.keyEmoji.isVisible = showEmojiKey
-        binding.keyKuten.isVisible = showKutouten
-        binding.keyTouten.isVisible = showKutouten
+        kutoutenRequested = showKutouten
+        binding.keyKuten.isVisible = showKutouten || isSplitLayout
+        binding.keyTouten.isVisible = showKutouten || isSplitLayout
     }
 
     fun setRomajiEnglishSwitchKeyVisibility(showRomajiEnglishKey: Boolean) {
