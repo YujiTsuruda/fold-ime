@@ -10,6 +10,20 @@ object QWERTYKeys {
         'z', 'x', 'c', 'v', 'b', 'n', 'm'
     )
 
+    /**
+     * English default layout. Same 10-key middle row as [DEFAULT_KEYS_JP] so the key
+     * positions and sizes are identical in Japanese and English mode.
+     * The last middle-row key is '-' where Japanese mode has 'ー'.
+     */
+    val DEFAULT_KEYS_EN = listOf(
+        // Top row
+        'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p',
+        // Middle row
+        'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', '-',
+        // Bottom row
+        'z', 'x', 'c', 'v', 'b', 'n', 'm'
+    )
+
     val NUMBER_KEYS = listOf(
         // Top row
         '1', '2', '3', '4', '5', '6', '7', '8', '9', '0',

@@ -40,7 +40,9 @@ class QWERTYKeyMap : QWERTYKeyMapHolder {
         QWERTYKey.QWERTYKeyI to QWERTYKeyInfo.KeyI,
         QWERTYKey.QWERTYKeyJ to QWERTYKeyInfo.KeyJ,
         QWERTYKey.QWERTYKeyK to QWERTYKeyInfo.KeyK,
-        QWERTYKey.QWERTYKeyL to QWERTYKeyInfo.KeyL,
+        // 'l' lives on the AtMark button and '-' on the L button, mirroring the JP layout.
+        QWERTYKey.QWERTYKeyAtMark to QWERTYKeyInfo.KeyL,
+        QWERTYKey.QWERTYKeyL to QWERTYKeyInfo.KeyMinus,
         QWERTYKey.QWERTYKeyM to QWERTYKeyInfo.KeyM,
         QWERTYKey.QWERTYKeyN to QWERTYKeyInfo.KeyN,
         QWERTYKey.QWERTYKeyO to QWERTYKeyInfo.KeyO,
@@ -88,7 +90,9 @@ class QWERTYKeyMap : QWERTYKeyMapHolder {
         QWERTYKey.QWERTYKeyI to QWERTYKeyInfo.KeyINumber,
         QWERTYKey.QWERTYKeyJ to QWERTYKeyInfo.KeyJ,
         QWERTYKey.QWERTYKeyK to QWERTYKeyInfo.KeyK,
-        QWERTYKey.QWERTYKeyL to QWERTYKeyInfo.KeyL,
+        // 'l' lives on the AtMark button and '-' on the L button, mirroring the JP layout.
+        QWERTYKey.QWERTYKeyAtMark to QWERTYKeyInfo.KeyL,
+        QWERTYKey.QWERTYKeyL to QWERTYKeyInfo.KeyMinus,
         QWERTYKey.QWERTYKeyM to QWERTYKeyInfo.KeyM,
         QWERTYKey.QWERTYKeyN to QWERTYKeyInfo.KeyN,
         QWERTYKey.QWERTYKeyO to QWERTYKeyInfo.KeyONumber,

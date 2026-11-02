@@ -748,21 +748,13 @@ class QWERTYKeyboardView @JvmOverloads constructor(
         when (mode) {
             QWERTYMode.Default -> {
                 binding.apply {
-                    if (!romajiModeState.value) {
-                        keyAtMark.isVisible = false
-                        keyA.setMarginStart(keyIndentLargeDp)
-                        keyL.setMarginEnd(keyIndentLargeDp)
-                        // Roman mode specific visibility
-                        keyV.isVisible = true
-                        keyB.isVisible = true
-                    } else {
-                        // Romaji mode
-                        keyV.isVisible = true
-                        keyB.isVisible = true
-                        keyA.setMarginStart(keyIndentSmallDp)
-                        keyL.setMarginEnd(keyIndentSmallDp)
-                        keyAtMark.isVisible = true
-                    }
+                    // Japanese and English share exactly the same geometry:
+                    // a 10-key middle row with the small indent.
+                    keyV.isVisible = true
+                    keyB.isVisible = true
+                    keyA.setMarginStart(keyIndentSmallDp)
+                    keyL.setMarginEnd(keyIndentSmallDp)
+                    keyAtMark.isVisible = true
                     keyShift.setMarginStart(keySideMarginDp)
                     keyDelete.setMarginEnd(keySideMarginDp)
                 }
@@ -799,6 +791,84 @@ class QWERTYKeyboardView @JvmOverloads constructor(
         }
         // マージン変更を反映するために再レイアウトを要求
         requestLayout()
+    }
+
+    // --- Split layout (wide screens such as an unfolded Galaxy Z Fold) ---
+    // The keyboard is split into a left-hand block and a right-hand block with a gap in
+    // the middle whenever the view is at least [splitMinWidthDp] wide. Narrow views
+    // (cover screen, floating keyboard) keep the normal single block.
+    private val splitMinWidthDp = 600f
+    private val splitGapFraction = 0.20f
+    private var isSplitLayout = false
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        val shouldSplit = w / resources.displayMetrics.density >= splitMinWidthDp
+        if (shouldSplit != isSplitLayout) {
+            isSplitLayout = shouldSplit
+            // Changing constraints during a layout pass is not allowed; do it right after.
+            post { applyKeyboardSplit(shouldSplit) }
+        }
+    }
+
+    /**
+     * Rewires the row chains around two vertical guidelines (the edges of the center gap).
+     *
+     * Last key of the left hand -> guideline_split_left, first key of the right hand <-
+     * guideline_split_right. Every row ends up with equal-width keys on both sides.
+     * Bottom letter row: shift is 1 key wide and delete is 2 keys wide while split, so that
+     * its gap lines up with the rows above (z x c v | b n m).
+     */
+    private fun applyKeyboardSplit(split: Boolean) {
+        val halfGap = splitGapFraction / 2f
+        binding.guidelineSplitLeft.let { g ->
+            val lp = g.layoutParams as ConstraintLayout.LayoutParams
+            lp.guidePercent = 0.5f - halfGap
+            g.layoutParams = lp
+        }
+        binding.guidelineSplitRight.let { g ->
+            val lp = g.layoutParams as ConstraintLayout.LayoutParams
+            lp.guidePercent = 0.5f + halfGap
+            g.layoutParams = lp
+        }
+
+        // (last key of the left hand, first key of the right hand) for each row
+        val boundaries = listOf(
+            binding.key5 to binding.key6,
+            binding.keyT to binding.keyY,
+            binding.keyG to binding.keyH,
+            binding.keyV to binding.keyB
+        )
+        boundaries.forEach { (left, right) ->
+            val leftParams = left.layoutParams as ConstraintLayout.LayoutParams
+            val rightParams = right.layoutParams as ConstraintLayout.LayoutParams
+            if (split) {
+                leftParams.endToStart = binding.guidelineSplitLeft.id
+                rightParams.startToEnd = binding.guidelineSplitRight.id
+            } else {
+                leftParams.endToStart = right.id
+                rightParams.startToEnd = left.id
+            }
+            left.layoutParams = leftParams
+            right.layoutParams = rightParams
+        }
+
+        setSideKeyWidth(binding.keyShift, split, 1f)
+        setSideKeyWidth(binding.keyDelete, split, 2f)
+        requestLayout()
+    }
+
+    private fun setSideKeyWidth(view: View, split: Boolean, weight: Float) {
+        val lp = view.layoutParams as ConstraintLayout.LayoutParams
+        if (split) {
+            lp.matchConstraintDefaultWidth = ConstraintLayout.LayoutParams.MATCH_CONSTRAINT_SPREAD
+            lp.horizontalWeight = weight
+        } else {
+            lp.matchConstraintDefaultWidth = ConstraintLayout.LayoutParams.MATCH_CONSTRAINT_PERCENT
+            lp.matchConstraintPercentWidth = 0.15f
+            lp.horizontalWeight = ConstraintLayout.LayoutParams.UNSET.toFloat()
+        }
+        view.layoutParams = lp
     }
 
     /**
@@ -1115,7 +1185,7 @@ class QWERTYKeyboardView @JvmOverloads constructor(
 
     private fun applyTopRightCharsEN(hasNumberRow: Boolean) {
         // EN Logic
-        val buttons = if (hasNumberRow) defaultQWERTYButtons else defaultQWERTYButtonsRoman
+        val buttons = defaultQWERTYButtonsRoman
         buttons.forEach {
             when (it.id) {
                 R.id.key_a -> it.topRightChar = '@'
@@ -1129,7 +1199,9 @@ class QWERTYKeyboardView @JvmOverloads constructor(
                 R.id.key_i -> it.topRightChar = if (hasNumberRow) '>' else '8'
                 R.id.key_j -> it.topRightChar = '+'
                 R.id.key_k -> it.topRightChar = '('
-                R.id.key_l -> it.topRightChar = ')'
+                // 'l' sits on the at-mark button (same as Japanese mode); the last key is '-'.
+                R.id.key_at_mark -> it.topRightChar = ')'
+                R.id.key_l -> it.topRightChar = null
                 R.id.key_m -> it.topRightChar = '?'
                 R.id.key_n -> it.topRightChar = '!'
                 R.id.key_o -> it.topRightChar = if (hasNumberRow) '{' else '9'
@@ -1367,9 +1439,11 @@ class QWERTYKeyboardView @JvmOverloads constructor(
     }
 
     private val aRowLetterViews: List<QWERTYButton> by lazy {
+        // 'l' is on keyAtMark and keyL holds '-' / 'ー'. Non-letter keys are filtered out
+        // by their label where this list is used for glide typing.
         listOf(
             binding.keyA, binding.keyS, binding.keyD, binding.keyF, binding.keyG,
-            binding.keyH, binding.keyJ, binding.keyK, binding.keyL
+            binding.keyH, binding.keyJ, binding.keyK, binding.keyAtMark, binding.keyL
         )
     }
 
@@ -1415,9 +1489,11 @@ class QWERTYKeyboardView @JvmOverloads constructor(
     }
 
     private fun attachDefaultKeyLabels() {
+        // Japanese and English use the same 10-key middle row and the same buttons,
+        // so key positions never change when switching between them.
         val chars =
-            if (romajiModeState.value) QWERTYKeys.DEFAULT_KEYS_JP else QWERTYKeys.DEFAULT_KEYS
-        val buttons = if (romajiModeState.value) defaultQWERTYButtonsRoman else defaultQWERTYButtons
+            if (romajiModeState.value) QWERTYKeys.DEFAULT_KEYS_JP else QWERTYKeys.DEFAULT_KEYS_EN
+        val buttons = defaultQWERTYButtonsRoman
         for (i in buttons.indices) {
             buttons[i].text = chars[i].toString()
         }
