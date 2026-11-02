@@ -42,6 +42,7 @@ import androidx.core.util.size
 import androidx.core.view.doOnLayout
 import androidx.core.view.isVisible
 import androidx.core.widget.ImageViewCompat
+import androidx.core.widget.addTextChangedListener
 import com.google.android.material.color.DynamicColors
 import com.google.android.material.textview.MaterialTextView
 import com.kazumaproject.core.domain.skin.KeyboardSkinId
@@ -192,6 +193,7 @@ class QWERTYKeyboardView @JvmOverloads constructor(
         addAll(numberRowButtons)
         add(binding.keyTouten)
         add(binding.keyKuten)
+        add(binding.keySpaceRight)
     }
 
     // ★ ポインターをロックするための変数を追加
@@ -354,7 +356,14 @@ class QWERTYKeyboardView @JvmOverloads constructor(
         isTablet = resources.getBoolean(com.kazumaproject.core.R.bool.isTablet)
 
         touchScope = createViewScope()
+
+        // The right-hand space key (split layout only) always shows the same label.
+        binding.keySpace.addTextChangedListener { binding.keySpaceRight.text = it?.toString() }
+        binding.keySpaceRight.text = binding.keySpace.text
     }
+
+    private fun isSpaceKey(view: View): Boolean =
+        view === binding.keySpace || view === binding.keySpaceRight
 
     private fun createViewScope(): CoroutineScope {
         return CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
@@ -567,7 +576,7 @@ class QWERTYKeyboardView @JvmOverloads constructor(
                 key1, key2, key3, key4, key5, key6, key7, key8, key9, key0,
                 keyKuten, keyTouten, keyQ, keyW, keyE, keyR, keyT, keyY, keyU, keyI, keyO, keyP,
                 keyA, keyS, keyD, keyF, keyG, keyH, keyJ, keyK, keyAtMark, keyL,
-                keyZ, keyX, keyC, keyV, keyB, keyN, keyM, keySpace
+                keyZ, keyX, keyC, keyV, keyB, keyN, keyM, keySpace, keySpaceRight
             )
 
             val specialKeys = listOf(
@@ -626,6 +635,9 @@ class QWERTYKeyboardView @JvmOverloads constructor(
                 keySpace.background = skin.keyDrawable(resources, qwerty = true,
                     role = com.kazumaproject.core.ui.skin.SkinKeyRole.SPACE)
                 keySpace.setTextColor(skin.palette.spaceText)
+                keySpaceRight.background = skin.keyDrawable(resources, qwerty = true,
+                    role = com.kazumaproject.core.ui.skin.SkinKeyRole.SPACE)
+                keySpaceRight.setTextColor(skin.palette.spaceText)
             }
         }
     }
@@ -789,6 +801,7 @@ class QWERTYKeyboardView @JvmOverloads constructor(
                 displayOrHideNumberKeys(false)
             }
         }
+        if (isSplitLayout) applySplitGridMargins()
         // マージン変更を反映するために再レイアウトを要求
         requestLayout()
     }
@@ -799,6 +812,7 @@ class QWERTYKeyboardView @JvmOverloads constructor(
     // (cover screen, floating keyboard) keep the normal single block.
     private val splitMinWidthDp = 600f
     private val splitGapFraction = 0.20f
+    private val splitOuterFraction = 0.10f
     private var isSplitLayout = false
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -812,25 +826,23 @@ class QWERTYKeyboardView @JvmOverloads constructor(
     }
 
     /**
-     * Rewires the row chains around two vertical guidelines (the edges of the center gap).
+     * Rewires the rows for the split layout.
      *
-     * Last key of the left hand -> guideline_split_left, first key of the right hand <-
-     * guideline_split_right. Every row ends up with equal-width keys on both sides.
-     * Bottom letter row: shift is 1 key wide and delete is 2 keys wide while split, so that
-     * its gap lines up with the rows above (z x c v | b n m).
+     * - Outer edges: the first/last key of every row is anchored to guideline_outer_left /
+     *   guideline_outer_right instead of the screen edge, so the thumbs do not have to
+     *   reach all the way to the sides.
+     * - Center gap: last key of the left hand -> guideline_split_left, first key of the
+     *   right hand <- guideline_split_right.
+     * - Every key is the same width (grid layout, no row indent). Each hand has 5 columns.
+     *   Bottom letter row: shift is 1 column and delete is 2 columns wide while split.
+     * - Bottom row: [あa][123][、][ space ] (gap: IME switch, cursors) [ space ][。][ return ].
      */
     private fun applyKeyboardSplit(split: Boolean) {
         val halfGap = splitGapFraction / 2f
-        binding.guidelineSplitLeft.let { g ->
-            val lp = g.layoutParams as ConstraintLayout.LayoutParams
-            lp.guidePercent = 0.5f - halfGap
-            g.layoutParams = lp
-        }
-        binding.guidelineSplitRight.let { g ->
-            val lp = g.layoutParams as ConstraintLayout.LayoutParams
-            lp.guidePercent = 0.5f + halfGap
-            g.layoutParams = lp
-        }
+        setGuidelinePercent(binding.guidelineSplitLeft, 0.5f - halfGap)
+        setGuidelinePercent(binding.guidelineSplitRight, 0.5f + halfGap)
+        setGuidelinePercent(binding.guidelineOuterLeft, splitOuterFraction)
+        setGuidelinePercent(binding.guidelineOuterRight, 1f - splitOuterFraction)
 
         // (last key of the left hand, first key of the right hand) for each row
         val boundaries = listOf(
@@ -853,9 +865,104 @@ class QWERTYKeyboardView @JvmOverloads constructor(
             right.layoutParams = rightParams
         }
 
+        val parentId = ConstraintLayout.LayoutParams.PARENT_ID
+        val startAnchor = if (split) binding.guidelineOuterLeft.id else parentId
+        val endAnchor = if (split) binding.guidelineOuterRight.id else parentId
+        listOf(binding.key1, binding.keyQ, binding.keyA, binding.keyShift).forEach {
+            val lp = it.layoutParams as ConstraintLayout.LayoutParams
+            lp.startToStart = startAnchor
+            it.layoutParams = lp
+        }
+        listOf(binding.key0, binding.keyP, binding.keyL, binding.keyDelete).forEach {
+            val lp = it.layoutParams as ConstraintLayout.LayoutParams
+            lp.endToEnd = endAnchor
+            it.layoutParams = lp
+        }
+
         setSideKeyWidth(binding.keyShift, split, 1f)
         setSideKeyWidth(binding.keyDelete, split, 2f)
+
+        binding.keySpaceRight.isVisible = split
+        val gapKey = 10f / 3f // 3.33 columns shared by IME switch + two cursor keys
+        val bottomRow: List<Pair<View, Float>> = if (split) {
+            val g = gapKey / 3f
+            listOf(
+                binding.switchRomajiEnglish to 1f,
+                binding.switchNumberLayout to 1f,
+                binding.key123 to 1f,
+                binding.keyEmoji to 1f,
+                binding.keyTouten to 1f,
+                binding.keySpace to 2f,
+                binding.keySwitchDefault to g,
+                binding.cursorLeft to g,
+                binding.cursorRight to g,
+                binding.keySpaceRight to 2f,
+                binding.keyKuten to 1f,
+                binding.keyReturn to 2f
+            )
+        } else {
+            listOf(
+                binding.switchRomajiEnglish to 0.75f,
+                binding.switchNumberLayout to 0.75f,
+                binding.key123 to 0.75f,
+                binding.keyEmoji to 0.5f,
+                binding.keySwitchDefault to 0.5f,
+                binding.keyTouten to 0.5f,
+                binding.keySpace to 1f,
+                binding.keyKuten to 0.5f,
+                binding.cursorLeft to 0.5f,
+                binding.cursorRight to 0.5f,
+                binding.keyReturn to 1f
+            )
+        }
+        relinkHorizontalChain(bottomRow, startAnchor, endAnchor)
+
+        applyLayoutForMode(qwertyMode.value)
         requestLayout()
+    }
+
+    private fun setGuidelinePercent(guideline: View, percent: Float) {
+        val lp = guideline.layoutParams as ConstraintLayout.LayoutParams
+        lp.guidePercent = percent
+        guideline.layoutParams = lp
+    }
+
+    /** Chains [keys] left-to-right between [startAnchorId] and [endAnchorId] with the given weights. */
+    private fun relinkHorizontalChain(
+        keys: List<Pair<View, Float>>,
+        startAnchorId: Int,
+        endAnchorId: Int
+    ) {
+        val unset = ConstraintLayout.LayoutParams.UNSET
+        keys.forEachIndexed { index, (view, weight) ->
+            val lp = view.layoutParams as ConstraintLayout.LayoutParams
+            lp.startToStart = unset
+            lp.startToEnd = unset
+            lp.endToStart = unset
+            lp.endToEnd = unset
+            if (index == 0) lp.startToStart = startAnchorId
+            else lp.startToEnd = keys[index - 1].first.id
+            if (index == keys.lastIndex) lp.endToEnd = endAnchorId
+            else lp.endToStart = keys[index + 1].first.id
+            lp.horizontalWeight = weight
+            lp.horizontalChainStyle = ConstraintLayout.LayoutParams.CHAIN_SPREAD
+            view.layoutParams = lp
+        }
+    }
+
+    /**
+     * While split, undo the row indents and the wider gaps next to shift / delete so that
+     * every row is a plain grid of equal-width keys.
+     */
+    private fun applySplitGridMargins() {
+        binding.apply {
+            keyA.setMarginStart(keyHorizontalGapDp)
+            keyL.setMarginEnd(keyHorizontalGapDp)
+            keyShift.setMarginStart(keyHorizontalGapDp)
+            keyShift.setMarginEnd(keyHorizontalGapDp)
+            keyDelete.setMarginStart(keyHorizontalGapDp)
+            keyDelete.setMarginEnd(keyHorizontalGapDp)
+        }
     }
 
     private fun setSideKeyWidth(view: View, split: Boolean, weight: Float) {
@@ -1308,7 +1415,7 @@ class QWERTYKeyboardView @JvmOverloads constructor(
                 key1, key2, key3, key4, key5, key6, key7, key8, key9, key0,
                 keyKuten, keyTouten, keyQ, keyW, keyE, keyR, keyT, keyY, keyU, keyI, keyO, keyP,
                 keyA, keyS, keyD, keyF, keyG, keyH, keyJ, keyK, keyAtMark, keyL,
-                keyZ, keyX, keyC, keyV, keyB, keyN, keyM, keySpace
+                keyZ, keyX, keyC, keyV, keyB, keyN, keyM, keySpace, keySpaceRight
             ).forEach {
                 it.setBackgroundDrawable(ContextCompat.getDrawable(context, bgRes))
                 if (liquidGlassEnable) {
@@ -1350,6 +1457,7 @@ class QWERTYKeyboardView @JvmOverloads constructor(
     private val specialTextButtons: List<TextView> by lazy {
         listOf(
             binding.keySpace,
+            binding.keySpaceRight,
             binding.key123,
             binding.keyKuten,
             binding.keyTouten,
@@ -1396,6 +1504,7 @@ class QWERTYKeyboardView @JvmOverloads constructor(
             binding.keyEmoji to QWERTYKey.QWERTYKeyEmoji,
             binding.key123 to QWERTYKey.QWERTYKeySwitchMode,
             binding.keySpace to QWERTYKey.QWERTYKeySpace,
+            binding.keySpaceRight to QWERTYKey.QWERTYKeySpace,
             binding.keyReturn to QWERTYKey.QWERTYKeyReturn,
             binding.cursorLeft to QWERTYKey.QWERTYKeyCursorLeft,
             binding.cursorRight to QWERTYKey.QWERTYKeyCursorRight,
@@ -1956,7 +2065,7 @@ class QWERTYKeyboardView @JvmOverloads constructor(
             } else {
                 toggleShift()
             }
-        } else if (view.id == binding.keyDelete.id || view.id == binding.keySpace.id) {
+        } else if (view.id == binding.keyDelete.id || isSpaceKey(view)) {
             /** empty body **/
         } else {
             disableShift()
@@ -2314,7 +2423,7 @@ class QWERTYKeyboardView @JvmOverloads constructor(
                 }
             }
 
-            if (it.id != binding.keySpace.id &&
+            if (!isSpaceKey(it) &&
                 it.id != binding.keyDelete.id &&
                 it.id != binding.keyShift.id &&
                 it.id != binding.key123.id &&
@@ -2588,7 +2697,7 @@ class QWERTYKeyboardView @JvmOverloads constructor(
                 pointerButtonMap.put(pointerId, it)
                 pointerStartCoords.put(pointerId, Pair(x, y))
 
-                if (it.id != binding.keySpace.id &&
+                if (!isSpaceKey(it) &&
                     it.id != binding.keyDelete.id &&
                     it.id != binding.keyShift.id &&
                     it.id != binding.key123.id &&
@@ -2626,7 +2735,7 @@ class QWERTYKeyboardView @JvmOverloads constructor(
                         true
                     }
 
-                    previousView?.id == binding.keySpace.id &&
+                    (previousView != null && isSpaceKey(previousView)) &&
                         (romajiModeState.value || englishSpaceUpFlickEnabled) -> {
                         applyCommonFlickEffects(pointerId, previousView)
                         if (if (romajiModeState.value) spaceUpFlickEnabled else englishSpaceUpFlickEnabled) {
@@ -3187,7 +3296,7 @@ class QWERTYKeyboardView @JvmOverloads constructor(
         isCursorMode = enabled
         if (enabled) {
             cursorPointerId = (0 until pointerButtonMap.size()).map { pointerButtonMap.keyAt(it) }
-                .firstOrNull { pointerButtonMap[it]?.id == binding.keySpace.id }
+                .firstOrNull { pointerButtonMap[it]?.let(this::isSpaceKey) == true }
             cursorPointerId?.let { pointerStartCoords[it] }?.let { position ->
                 cursorInitialX = position.first
                 cursorInitialY = position.second
@@ -3222,7 +3331,7 @@ class QWERTYKeyboardView @JvmOverloads constructor(
             listOf(
                 keyQ, keyW, keyE, keyR, keyT, keyY, keyU, keyI, keyO, keyP,
                 keyA, keyS, keyD, keyF, keyG, keyH, keyJ, keyK, keyL,
-                keyZ, keyX, keyC, keyV, keyB, keyN, keyM, keyAtMark, keySpace
+                keyZ, keyX, keyC, keyV, keyB, keyN, keyM, keyAtMark, keySpace, keySpaceRight
             ).forEach { it.text = "" }
         }
     }
