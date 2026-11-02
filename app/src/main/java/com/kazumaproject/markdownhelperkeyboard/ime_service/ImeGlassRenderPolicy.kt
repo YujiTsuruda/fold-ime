@@ -20,7 +20,7 @@ internal data class ImeGlassRenderDecision(
 
 internal object ImeGlassRenderPolicy {
     const val SYSTEM_BLUR_MIN_API = 31
-    const val SYSTEM_BLUR_MAX_API = 36
+    const val SYSTEM_BLUR_MAX_API = Int.MAX_VALUE
     const val SYSTEM_BLUR_RADIUS = 50
 
     fun resolve(
