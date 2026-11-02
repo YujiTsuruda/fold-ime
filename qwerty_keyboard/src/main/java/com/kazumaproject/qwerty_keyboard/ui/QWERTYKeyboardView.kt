@@ -812,7 +812,8 @@ class QWERTYKeyboardView @JvmOverloads constructor(
     // (cover screen, floating keyboard) keep the normal single block.
     private val splitMinWidthDp = 600f
     private val splitGapFraction = 0.20f
-    private val splitOuterFraction = 0.10f
+    private val splitOuterFraction = 0.01f
+    private val splitGridFraction = 0.085f
     private var isSplitLayout = false
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -828,13 +829,12 @@ class QWERTYKeyboardView @JvmOverloads constructor(
     /**
      * Rewires the rows for the split layout.
      *
-     * - Outer edges: the first/last key of every row is anchored to guideline_outer_left /
-     *   guideline_outer_right instead of the screen edge, so the thumbs do not have to
-     *   reach all the way to the sides.
-     * - Center gap: last key of the left hand -> guideline_split_left, first key of the
-     *   right hand <- guideline_split_right.
-     * - Every key is the same width (grid layout, no row indent). Each hand has 5 columns.
-     *   Bottom letter row: shift is 1 column and delete is 2 columns wide while split.
+     * - Letter grid: every letter row is anchored between guideline_grid_left and
+     *   guideline_grid_right, with the center gap between guideline_split_left and
+     *   guideline_split_right. Each hand is 5 equal columns, no row indent.
+     * - Shift and delete sit in their own columns outside the letter grid
+     *   (outer_left..grid_left and grid_right..outer_right), so z..m are normal keys.
+     * - Bottom letter row: z x c v b | n m (n, m are fixed-width keys next to the gap).
      * - Bottom row: [あa][123][、][ space ] (gap: IME switch, cursors) [ space ][。][ return ].
      */
     private fun applyKeyboardSplit(split: Boolean) {
@@ -843,13 +843,14 @@ class QWERTYKeyboardView @JvmOverloads constructor(
         setGuidelinePercent(binding.guidelineSplitRight, 0.5f + halfGap)
         setGuidelinePercent(binding.guidelineOuterLeft, splitOuterFraction)
         setGuidelinePercent(binding.guidelineOuterRight, 1f - splitOuterFraction)
+        setGuidelinePercent(binding.guidelineGridLeft, splitGridFraction)
+        setGuidelinePercent(binding.guidelineGridRight, 1f - splitGridFraction)
 
         // (last key of the left hand, first key of the right hand) for each row
         val boundaries = listOf(
             binding.key5 to binding.key6,
             binding.keyT to binding.keyY,
-            binding.keyG to binding.keyH,
-            binding.keyV to binding.keyB
+            binding.keyG to binding.keyH
         )
         boundaries.forEach { (left, right) ->
             val leftParams = left.layoutParams as ConstraintLayout.LayoutParams
@@ -866,26 +867,82 @@ class QWERTYKeyboardView @JvmOverloads constructor(
         }
 
         val parentId = ConstraintLayout.LayoutParams.PARENT_ID
-        val startAnchor = if (split) binding.guidelineOuterLeft.id else parentId
-        val endAnchor = if (split) binding.guidelineOuterRight.id else parentId
-        listOf(binding.key1, binding.keyQ, binding.keyA, binding.keyShift).forEach {
+        val gridStart = if (split) binding.guidelineGridLeft.id else parentId
+        val gridEnd = if (split) binding.guidelineGridRight.id else parentId
+        listOf(binding.key1, binding.keyQ, binding.keyA).forEach {
             val lp = it.layoutParams as ConstraintLayout.LayoutParams
-            lp.startToStart = startAnchor
+            lp.startToStart = gridStart
             it.layoutParams = lp
         }
-        listOf(binding.key0, binding.keyP, binding.keyL, binding.keyDelete).forEach {
+        listOf(binding.key0, binding.keyP, binding.keyL).forEach {
             val lp = it.layoutParams as ConstraintLayout.LayoutParams
-            lp.endToEnd = endAnchor
+            lp.endToEnd = gridEnd
             it.layoutParams = lp
         }
 
-        setSideKeyWidth(binding.keyShift, split, 1f)
-        setSideKeyWidth(binding.keyDelete, split, 2f)
+        val noWeight = ConstraintLayout.LayoutParams.UNSET.toFloat()
+        val colFraction = (0.5f - halfGap - splitGridFraction) / 5f
+        val zRow = listOf(
+            binding.keyZ, binding.keyX, binding.keyC, binding.keyV, binding.keyB
+        )
+        if (split) {
+            // shift / delete: own columns outside the letter grid
+            setSideKeyWidth(binding.keyShift, true, noWeight)
+            setSideKeyWidth(binding.keyDelete, true, noWeight)
+            relinkHorizontalChain(
+                listOf(binding.keyShift to noWeight),
+                binding.guidelineOuterLeft.id, binding.guidelineGridLeft.id
+            )
+            relinkHorizontalChain(
+                listOf(binding.keyDelete to noWeight),
+                binding.guidelineGridRight.id, binding.guidelineOuterRight.id
+            )
+            // z x c v b: 5 equal columns of the left hand
+            relinkHorizontalChain(
+                zRow.map { it to 1f },
+                binding.guidelineGridLeft.id, binding.guidelineSplitLeft.id
+            )
+            // n m: same key size as the letter rows, next to the gap
+            val gapPx = dpToPx((keyHorizontalGapDp * 2f).toInt())
+            val viewWidth = width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+            val boxFraction = (colFraction - gapPx.toFloat() / viewWidth).coerceAtLeast(0.02f)
+            listOf(binding.keyN, binding.keyM).forEachIndexed { i, key ->
+                val lp = key.layoutParams as ConstraintLayout.LayoutParams
+                lp.startToStart = ConstraintLayout.LayoutParams.UNSET
+                lp.startToEnd = if (i == 0) binding.guidelineSplitRight.id else binding.keyN.id
+                lp.endToStart = if (i == 0) binding.keyM.id else ConstraintLayout.LayoutParams.UNSET
+                lp.endToEnd = if (i == 0) ConstraintLayout.LayoutParams.UNSET else binding.guidelineGridRight.id
+                lp.matchConstraintDefaultWidth = ConstraintLayout.LayoutParams.MATCH_CONSTRAINT_PERCENT
+                lp.matchConstraintPercentWidth = boxFraction
+                lp.horizontalWeight = noWeight
+                lp.horizontalChainStyle = ConstraintLayout.LayoutParams.CHAIN_PACKED
+                lp.horizontalBias = 0f
+                key.layoutParams = lp
+            }
+        } else {
+            listOf(binding.keyN, binding.keyM).forEach { key ->
+                val lp = key.layoutParams as ConstraintLayout.LayoutParams
+                lp.matchConstraintDefaultWidth = ConstraintLayout.LayoutParams.MATCH_CONSTRAINT_SPREAD
+                lp.horizontalBias = 0.5f
+                key.layoutParams = lp
+            }
+            setSideKeyWidth(binding.keyShift, false, noWeight)
+            setSideKeyWidth(binding.keyDelete, false, noWeight)
+            relinkHorizontalChain(
+                listOf(
+                    binding.keyShift to noWeight,
+                    binding.keyZ to 1f, binding.keyX to 1f, binding.keyC to 1f,
+                    binding.keyV to 1f, binding.keyB to 1f, binding.keyN to 1f,
+                    binding.keyM to 1f,
+                    binding.keyDelete to noWeight
+                ),
+                parentId, parentId
+            )
+        }
 
         binding.keySpaceRight.isVisible = split
-        val gapKey = 10f / 3f // 3.33 columns shared by IME switch + two cursor keys
         val bottomRow: List<Pair<View, Float>> = if (split) {
-            val g = gapKey / 3f
+            val g = (splitGapFraction / colFraction) / 3f // IME switch + two cursor keys
             listOf(
                 binding.switchRomajiEnglish to 1f,
                 binding.switchNumberLayout to 1f,
@@ -915,7 +972,7 @@ class QWERTYKeyboardView @JvmOverloads constructor(
                 binding.keyReturn to 1f
             )
         }
-        relinkHorizontalChain(bottomRow, startAnchor, endAnchor)
+        relinkHorizontalChain(bottomRow, gridStart, gridEnd)
 
         applyLayoutForMode(qwertyMode.value)
         requestLayout()
@@ -962,6 +1019,11 @@ class QWERTYKeyboardView @JvmOverloads constructor(
             keyShift.setMarginEnd(keyHorizontalGapDp)
             keyDelete.setMarginStart(keyHorizontalGapDp)
             keyDelete.setMarginEnd(keyHorizontalGapDp)
+            // Keep the columns of hidden keys (number / symbol layouts) so the others
+            // do not stretch.
+            listOf(keyV, keyB).forEach {
+                if (it.visibility == View.GONE) it.visibility = View.INVISIBLE
+            }
         }
     }
 
@@ -2986,6 +3048,26 @@ class QWERTYKeyboardView @JvmOverloads constructor(
             if (!child.isVisible || !qwertyButtonMap.containsKey(child)) continue
             child.getHitRect(hitRect)
             if (hitRect.contains(x, y)) return child
+        }
+        if (isSplitLayout) {
+            // Split layout: only forgive touches that land in the small gaps right next to
+            // a key; the outer margin and the center gap must not trigger any key.
+            val tolerance = dpToPx(8)
+            var best: View? = null
+            var bestDist = Int.MAX_VALUE
+            for (i in 0 until childCount) {
+                val child = getChildAt(i)
+                if (!child.isVisible || !qwertyButtonMap.containsKey(child)) continue
+                val dx = maxOf(child.left - x, 0, x - child.right)
+                val dy = maxOf(child.top - y, 0, y - child.bottom)
+                if (dx > tolerance || dy > tolerance) continue
+                val d = dx * dx + dy * dy
+                if (d < bestDist) {
+                    bestDist = d
+                    best = child
+                }
+            }
+            return best
         }
         for (i in 0 until childCount) {
             val child = getChildAt(i)
