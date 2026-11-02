@@ -311,6 +311,15 @@ object AppPreference {
     private val TENKEY_LAST_INPUT_MODE_SAVED_AT_EPOCH_MILLIS_PREFERENCE =
         Pair("tenkey_last_input_mode_saved_at_epoch_millis_preference", 0L)
 
+    // QWERTY (romaji) keyboard: remember the last Japanese/English and number/symbol layout
+    // and start the next input field in the same state. On by default.
+    private val QWERTY_RESTORE_INPUT_MODE_ON_RESTART_PREFERENCE =
+        Pair("qwerty_restore_input_mode_on_restart_preference", true)
+    private val QWERTY_LAST_ROMAJI_PREFERENCE =
+        Pair("qwerty_last_romaji_preference", true)
+    private val QWERTY_LAST_LAYOUT_MODE_PREFERENCE =
+        Pair("qwerty_last_layout_mode_preference", "Default")
+
     private val TABLET_TENKEY_SWITCH_QWERTY_PREFERENCE =
         Pair("tablet_tenkey_kana_english_qwerty_preference", false)
 
@@ -1385,6 +1394,35 @@ object AppPreference {
         it.putString(SUMIRE_LAST_INPUT_MODE_PRESENTATION_PREFERENCE.first, presentation)
         it.putLong(SUMIRE_LAST_INPUT_MODE_SAVED_AT_EPOCH_MILLIS_PREFERENCE.first, savedAtEpochMillis)
     }
+
+    var qwerty_restore_input_mode_on_restart_preference: Boolean
+        get() = preferences.getBoolean(
+            QWERTY_RESTORE_INPUT_MODE_ON_RESTART_PREFERENCE.first,
+            QWERTY_RESTORE_INPUT_MODE_ON_RESTART_PREFERENCE.second
+        )
+        set(value) = preferences.edit {
+            it.putBoolean(QWERTY_RESTORE_INPUT_MODE_ON_RESTART_PREFERENCE.first, value)
+        }
+
+    /** true = Japanese (romaji), false = English. */
+    val qwerty_last_romaji_preference: Boolean
+        get() = preferences.getBoolean(
+            QWERTY_LAST_ROMAJI_PREFERENCE.first,
+            QWERTY_LAST_ROMAJI_PREFERENCE.second
+        )
+
+    /** Name of the view's layout mode: Default / Number / Symbol. */
+    val qwerty_last_layout_mode_preference: String
+        get() = preferences.getString(
+            QWERTY_LAST_LAYOUT_MODE_PREFERENCE.first,
+            QWERTY_LAST_LAYOUT_MODE_PREFERENCE.second
+        ) ?: QWERTY_LAST_LAYOUT_MODE_PREFERENCE.second
+
+    internal fun saveQwertyRestartInputMode(romaji: Boolean, layoutMode: String) =
+        preferences.edit {
+            it.putBoolean(QWERTY_LAST_ROMAJI_PREFERENCE.first, romaji)
+            it.putString(QWERTY_LAST_LAYOUT_MODE_PREFERENCE.first, layoutMode)
+        }
 
     var tenkey_last_input_mode_preference: String
         get() = preferences.getString(

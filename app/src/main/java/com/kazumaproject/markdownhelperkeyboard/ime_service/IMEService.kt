@@ -6162,6 +6162,9 @@ class IMEService : InputMethodService(), LifecycleOwner, InputConnection,
 
     override fun onStartInputView(editorInfo: EditorInfo?, restarting: Boolean) {
         stopSplitKeyboard()
+        // The editor may switch fields without onFinishInputView(); save the state of the
+        // previous field before it is reset below.
+        if (isInputViewActive) persistCurrentQwertyInputModeIfEnabled()
         super.onStartInputView(editorInfo, restarting)
         flickInputPreviewCoordinator.cancel(restore = true)
         clearZeroQueryAllState(refresh = false)
@@ -6277,6 +6280,7 @@ class IMEService : InputMethodService(), LifecycleOwner, InputConnection,
         } else {
             Timber.d("current input type in OnStartView not password: [$currentInputType] [$restarting]")
             resetKeyboard()
+            restoreQwertyInputModeIfEnabled()
         }
 
         if (isKeyboardFloatingMode == true) {
@@ -6626,6 +6630,7 @@ class IMEService : InputMethodService(), LifecycleOwner, InputConnection,
         disableKeyboardLayoutEditMode()
         persistCurrentCustomKeyboardInputModeIfEnabled()
         persistCurrentTenkeyOrSumireInputModeIfEnabled()
+        persistCurrentQwertyInputModeIfEnabled()
         isInputViewActive = false
         qwertyGlideInputCoordinator?.cancelPending()
         clearAndPauseSuminagashiInkEffects()
@@ -14602,6 +14607,55 @@ class IMEService : InputMethodService(), LifecycleOwner, InputConnection,
             isQwertyViewVisible = qwertyView?.isVisible == true,
             isQwertyNumberLayout = qwertyView?.snapshotUiState()?.qwertyMode == QWERTYMode.Number
         )
+    }
+
+    /** True when the plain QWERTY / ROMAJI keyboard (not a tenkey/sumire proxy) is the one shown. */
+    private fun isPlainQwertyKeyboardDisplayed(): Boolean {
+        if (activeSplitSlot != null) return false
+        if (isKeyboardFloatingMode == true) return false
+        val type = keyboardOrder.getOrNull(currentKeyboardOrder)
+        if (type != KeyboardType.QWERTY && type != KeyboardType.ROMAJI) return false
+        if (qwertyMode.value != TenKeyQWERTYMode.TenKeyQWERTY &&
+            qwertyMode.value != TenKeyQWERTYMode.TenKeyQWERTYRomaji
+        ) return false
+        return getActiveKeyboardSurface()?.qwertyView?.isVisible == true
+    }
+
+    private fun persistCurrentQwertyInputModeIfEnabled() {
+        if (!appPreference.qwerty_restore_input_mode_on_restart_preference) return
+        if (currentInputType in passwordTypesWithOutNumber || currentInputType in numberTypes) return
+        if (!isPlainQwertyKeyboardDisplayed()) return
+        val layout = getActiveKeyboardSurface()?.qwertyView?.currentLayoutMode() ?: return
+        appPreference.saveQwertyRestartInputMode(
+            romaji = currentQwertyRomajiModeForSession,
+            layoutMode = when (layout) {
+                QWERTYMode.Number -> "Number"
+                QWERTYMode.Symbol -> "Symbol"
+                else -> "Default"
+            }
+        )
+    }
+
+    private fun restoreQwertyInputModeIfEnabled() {
+        if (!appPreference.qwerty_restore_input_mode_on_restart_preference) return
+        if (!isPlainQwertyKeyboardDisplayed()) return
+        val qwertyView = getActiveKeyboardSurface()?.qwertyView ?: return
+        val type = keyboardOrder.getOrNull(currentKeyboardOrder)
+        val savedRomaji = appPreference.qwerty_last_romaji_preference
+        val savedLayout = when (appPreference.qwerty_last_layout_mode_preference) {
+            "Number" -> QWERTYMode.Number
+            "Symbol" -> QWERTYMode.Symbol
+            else -> QWERTYMode.Default
+        }
+
+        if (type == KeyboardType.ROMAJI && !savedRomaji) {
+            setCurrentInputModeForSession(InputMode.ModeEnglish)
+            setCurrentQwertyRomajiModeForSession(false)
+            qwertyView.resetQWERTYKeyboard(editorEnterLabel(japanese = false))
+            setQwertyRomajiSwitchTextOnActiveSurface(false)
+        }
+        qwertyView.setQwertyLayoutMode(savedLayout)
+        refreshBaselineInputBehaviorForCurrentKeyboard("qwerty restore input mode")
     }
 
     private fun persistCurrentTenkeyOrSumireInputModeIfEnabled() {

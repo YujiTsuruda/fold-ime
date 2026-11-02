@@ -3413,6 +3413,22 @@ class QWERTYKeyboardView @JvmOverloads constructor(
     fun setDefaultView() {
         _qwertyMode.update { QWERTYMode.Default }
     }
+
+    /** Current view-level layout (Default / Number / Symbol). */
+    fun currentLayoutMode(): QWERTYMode = qwertyMode.value
+
+    /**
+     * Switches the view-level layout (Default / Number / Symbol) without touching the
+     * Japanese/English (romaji) state. Used to restore the last layout in a new input field.
+     */
+    fun setQwertyLayoutMode(mode: QWERTYMode) {
+        if (qwertyMode.value == mode) return
+        cancelIndependentTouchesForLayoutChange()
+        cancelQwertyGlideCandidate(notify = glideStarted)
+        clearShiftCaps(notifyListener = true)
+        _qwertyMode.update { mode }
+        refreshSpecialKeyIconSizesWhenLaidOut()
+    }
 }
 
 private fun Double.toFloatOrDefault(defaultValue: Float = 0f): Float {
